@@ -1,0 +1,1221 @@
+---
+title: "Kavya_FinalProject"
+author: "Kavya Chandran"
+date: "2024-02-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Importing Data set
+
+```{r}
+library(readr)
+OUDs <- read_csv("OUData.csv")
+names(OUDs)
+```
+
+
+```{r}
+dim(OUDs)
+str(OUDs)
+summary(OUDs)
+```
+Checking for Missing Values
+
+```{r}
+colSums(is.na(OUDs))
+```
+
+Changing Datatypes and checking for Missing Values
+
+```{r}
+OUDs$Gender <- as.factor(OUDs$Gender)
+OUDs$PrimaryInsuranceCategory <- as.factor(OUDs$PrimaryInsuranceCategory)
+OUDs$InitPatientClassAndFirstPostOUClass <- as.factor(OUDs$InitPatientClassAndFirstPostOUClass)
+OUDs$Flipped <- as.factor(OUDs$Flipped)
+OUDs$OU_LOS_hrs <- as.integer(OUDs$OU_LOS_hrs)
+OUDs$BloodPressureUpper <- as.numeric(OUDs$BloodPressureUpper)
+OUDs$BloodPressureDiff <- as.numeric(OUDs$BloodPressureDiff)
+OUDs$Pulse <- as.numeric(OUDs$Pulse)
+OUDs$PulseOximetry <- as.numeric(OUDs$PulseOximetry)
+OUDs$Respirations <- as.numeric(OUDs$Respirations)
+OUDs$Temperature <- as.integer(OUDs$Temperature)
+str(OUDs)
+
+colSums(is.na(OUDs))
+```
+
+Missing Values found in few variables
+
+Mean Imputation to handle missing values
+
+```{r}
+OUDs$BloodPressureUpper[is.na(OUDs$BloodPressureUpper)] <- mean(OUDs$BloodPressureUpper, na.rm = TRUE)
+OUDs$BloodPressureDiff[is.na(OUDs$BloodPressureDiff)] <- mean(OUDs$BloodPressureDiff, na.rm = TRUE)
+OUDs$Pulse[is.na(OUDs$Pulse)] <- mean(OUDs$Pulse, na.rm = TRUE)
+OUDs$PulseOximetry[is.na(OUDs$PulseOximetry)] <- mean(OUDs$PulseOximetry, na.rm = TRUE)
+OUDs$Respirations[is.na(OUDs$Respirations)] <- mean(OUDs$Respirations, na.rm = TRUE)
+OUDs$Temperature[is.na(OUDs$Temperature)] <- mean(OUDs$Temperature, na.rm = TRUE)
+```
+
+
+```{r}
+# Remove the ObservationRecordKey column from the dataset
+OUDs <- subset(OUDs, select = -ObservationRecordKey)
+names(OUDs)
+```
+
+
+Visualization of Numerical Variable Distributions
+
+```{r, warning=FALSE}
+library(ggplot2)
+
+# Filter numerical columns
+numeric_columns <- names(OUDs)[sapply(OUDs, is.numeric)]
+
+# Plot histograms for numerical variables
+for (col in numeric_columns) {
+  # Create histogram plot
+  p <- ggplot(OUDs, aes(x = .data[[col]])) +
+    geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
+    labs(title = paste("Distribution of", col),
+         x = col,
+         y = "Frequency") +
+    theme_minimal() +
+    theme(plot.title = element_text(hjust = 0.5))
+  
+  print(p)
+}
+
+
+```
+
+Correlation Matrix
+
+```{r}
+# checking correlation among variables (there is no correlation among variables).
+library(ggcorrplot)
+
+# Create a correlation matrix for the selected variables
+cor_matrix <- cor(OUDs[c("Age", "OU_LOS_hrs", "BloodPressureUpper", "BloodPressureLower", "BloodPressureDiff", "Pulse", "PulseOximetry", "Respirations", "Temperature")])
+
+# Create the correlation plot
+ggcorrplot(cor_matrix, type = "lower", lab = TRUE)
+```
+The data reveals several notable correlations:
+- Age shows a moderate positive correlation with both systolic and diastolic blood pressure, suggesting that as individuals age, their blood pressure tends to increase.
+- A weak positive correlation exists between heart rate and systolic blood pressure, indicating that individuals with higher heart rates tend to have higher systolic blood pressure.
+- Conversely, there is a weak negative correlation between respiratory rate and systolic blood pressure, suggesting that individuals with lower respiratory rates may exhibit higher systolic blood pressure.
+- Notably, a strong positive correlation is observed between systolic and diastolic blood pressure, implying that individuals with elevated systolic blood pressure are also likely to have elevated diastolic blood pressure.
+
+
+
+# Create a function to categorize blood pressure readings
+
+```{r}
+categorize_blood_pressure <- function(systolic, diastolic) {
+  ifelse(systolic < 120 & diastolic < 80, "Normal",
+    ifelse(systolic >= 120 & systolic <= 129 & diastolic < 80, "Elevated",
+      ifelse(systolic >= 130 & systolic <= 139 & diastolic >= 80 & diastolic <= 89, "Hypertension Stage 1",
+        ifelse(systolic >= 140 & diastolic >= 90, "Hypertension Stage 2",
+          ifelse(systolic > 180 | diastolic > 120, "Hypertensive Crisis", "Uncategorized")
+        )
+      )
+    )
+  )
+}
+
+# Apply the function to categorize blood pressure readings
+OUDs$BP_Category <- categorize_blood_pressure(OUDs$BloodPressureUpper, OUDs$BloodPressureLower)
+
+OUDs$BP_Category <- factor(OUDs$BP_Category, levels = c("Normal", "Elevated", "Hypertension Stage 1", "Hypertension Stage 2", "Hypertensive Crisis", "Uncategorized"))
+
+```
+
+Function to categorize temperature readings
+
+```{r}
+# Create a function to categorize temperature readings
+categorize_temperature <- function(temperature) {
+  ifelse(temperature < 97, "Below Normal",
+    ifelse(temperature >= 97 & temperature <= 100, "Normal",
+      ifelse(temperature > 100, "Fever", "Uncategorized")
+    )
+  )
+}
+
+# Apply the function to categorize temperature readings
+OUDs$Temperature_Category <- categorize_temperature(OUDs$Temperature)
+
+# Convert Temperature_Category to factor
+OUDs$Temperature_Category <- factor(OUDs$Temperature_Category, levels = c("Below Normal", "Normal", "Fever", "Uncategorized"))
+
+```
+
+```{r}
+str(OUDs)
+
+library(dplyr)
+
+# Assuming your data is stored in a dataframe called 'df'
+categorical_vars <- OUDs %>% select_if(is.factor) %>% names()
+
+for (col in categorical_vars) {
+  plot <- ggplot(OUDs, aes(x = !!sym(col))) +
+    geom_bar(fill = "#a6d75b", color = "black") +
+    labs(title = paste("Distribution of ", col), x = col, y = "Frequency") +
+    theme_minimal()
+  
+  print(plot)
+}
+
+
+```
+Initial primary diagnosis-related group (DRG)
+
+```{r}
+library(ggplot2)
+
+OUDs$DRG01 <- factor(OUDs$DRG01, levels = c("276", "428", "486", "558", "577", "578", "599", "780", "782", "786", "787", "789"))
+levels(OUDs$DRG01) <- c("Dehydration", "Congestive Heart Failure", "Pneumonia", "Colitis", "Pancreatitis",
+                        "Gastrointestinal Bleeding", "Urinary Infection", "Syncope", "Edema", "Chest Pain",
+                        "Nausea", "Abdominal Pain")
+
+library(ggplot2)
+
+diagnostics <- ggplot(OUDs, aes(x = DRG01, fill = DRG01)) +
+  geom_bar(stat = "count") +
+  labs(title = "Initial Diagnosis") +
+  theme(
+    axis.text.x = element_text(size = 10, angle = 45, hjust = 1),
+    plot.title = element_text(hjust = 0.5)
+    
+  )
+
+# Customizing colors
+diagnostics + scale_fill_brewer(palette = "Spectral")
+```
+
+
+Patient Flip Rate Visualization
+
+```{r}
+# Assuming your data frame is named 'df'
+library(ggplot2)
+
+flip_rate <- prop.table(table(OUDs$Flipped)) * 100
+
+ggplot(data = data.frame(Flipped = names(flip_rate), Percentage = as.numeric(flip_rate)), aes(x = Flipped, y = Percentage)) +
+  geom_bar(stat = "identity", fill = "#7FFFD4", width = 0.5) +
+  labs(title = "Percentage of Patients Flipping from Observation to Inpatient Status",
+       x = "Flipped Status", y = "Percentage") +
+  theme_minimal()
+
+```
+```{r}
+# Assuming your data frame is named 'df'
+library(ggplot2)
+
+flip_rate <- prop.table(table(OUDs$Flipped)) * 100
+
+pie_data <- data.frame(Flipped = names(flip_rate), Percentage = as.numeric(flip_rate))
+
+ggplot(pie_data, aes(x = "", y = Percentage, fill = Flipped)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +
+  coord_polar("y", start=0) +
+  geom_text(aes(label = paste0(round(Percentage, 1), "%")), position = position_stack(vjust = 0.5)) +
+  labs(title = "Percentage of Patients Flipping from Observation to Inpatient Status",
+       fill = "Flipped Status",
+       x = NULL, y = NULL) +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+```
+
+Initial primary diagnosis-related group Flipped
+
+```{r}
+# Assuming your data frame is named 'df'
+library(ggplot2)
+
+# Count the number of flips for each group of DRG01
+flip_counts <- table(OUDs$DRG01, OUDs$Flipped)
+
+# Convert the table to a data frame
+flip_counts_df <- as.data.frame(flip_counts)
+
+# Rename the columns for clarity
+colnames(flip_counts_df) <- c("DRG01", "Flipped", "Count")
+
+# Plot the bar chart
+ggplot(flip_counts_df, aes(x = DRG01, y = Count, fill = Flipped)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(title = "No. of Flips by DRG01 Group",
+       x = "DRG01 Group", y = "No. of Flips",
+       fill = "Flipped Status") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+Length of Stay Distribution Visualization
+
+```{r}
+ggplot(OUDs, aes(x = OU_LOS_hrs)) +
+  geom_histogram(fill = "#4fb9af", bins = 20, color = "black") +
+  labs(title = "Distribution of Length of Stay",
+       x = "Length of Stay (hours)", y = "Frequency") +
+  theme_minimal()
+
+```
+```{r}
+library(ggplot2)
+
+# Count the number of flips for each category of BP
+bp_flip_counts <- table(OUDs$BP_Category, OUDs$Flipped)
+
+# Convert the table to a data frame
+bp_flip_counts_df <- as.data.frame(bp_flip_counts)
+
+# Rename the columns for clarity
+colnames(bp_flip_counts_df) <- c("BP_Category", "Flipped", "Count")
+
+# Plot the bar chart for BP category
+ggplot(bp_flip_counts_df, aes(x = BP_Category, y = Count, fill = Flipped)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(title = "No. of Flips by Blood Pressure Category",
+       x = "Blood Pressure Category", y = "Count of Flips",
+       fill = "Flipped Status") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+Age Catogorising
+
+```{r}
+
+# Create age categories based on defined age ranges
+OUDs$Age_Category <- cut(OUDs$Age, breaks = c(0, 18, 30, 40, 50, 60, 70, 80, 90, Inf),
+                          labels = c("0-18", "19-30", "31-40", "41-50", "51-60", "61-70", "71-80", "81-90", "90+"),
+                          include.lowest = TRUE)
+
+# Display the first few rows of the dataset with the new Age_Category column
+head(OUDs)
+
+```
+
+```{r}
+# Count the number of flips for each category of Age
+age_flip_counts <- table(OUDs$Age_Category, OUDs$Flipped)
+
+# Convert the table to a data frame
+age_flip_counts_df <- as.data.frame(age_flip_counts)
+
+# Rename the columns for clarity
+colnames(age_flip_counts_df) <- c("Age_Category", "Flipped", "Count")
+
+# Plot the bar chart for Age category
+ggplot(age_flip_counts_df, aes(x = Age_Category, y = Count, fill = Flipped)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(title = "No. of Flips by Age Category",
+       x = "Age Category", y = "No. of Flips",
+       fill = "Flipped Status") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+
+
+```{r}
+# Count the number of flips for each category of Temperature
+temp_flip_counts <- table(OUDs$Temperature_Category, OUDs$Flipped)
+
+# Convert the table to a data frame
+temp_flip_counts_df <- as.data.frame(temp_flip_counts)
+
+# Rename the columns for clarity
+colnames(temp_flip_counts_df) <- c("Temperature_Category", "Flipped", "Count")
+
+# Plot the bar chart for Temperature category
+ggplot(temp_flip_counts_df, aes(x = Temperature_Category, y = Count, fill = Flipped)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(title = "No. of Flips by Temperature Category",
+       x = "Temperature Category", y = "No. of Flips",
+       fill = "Flipped Status") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+Flipped Patient Summary
+
+```{r}
+# Filter the data for cases where Flipped is 1
+flipped_data <- subset(OUDs, Flipped == 1)
+
+# Calculate the total number of observations where Flipped is 1
+total_flipped <- nrow(flipped_data)
+
+# Sort the diagnostics (DRG01) based on their frequency and select the top 3 among flipped cases
+top_diagnostics_flipped <- names(sort(table(flipped_data$DRG01), decreasing = TRUE))[1:3]
+
+# Sort temperature categories based on their frequency and select the top 3 among flipped cases
+top_temp_categories_flipped <- names(sort(table(flipped_data$Temperature_Category), decreasing = TRUE))[1:3]
+
+# Sort blood pressure categories based on their frequency and select the top 3 among flipped cases
+top_bp_categories_flipped <- names(sort(table(flipped_data$BP_Category), decreasing = TRUE))[1:3]
+
+# Sort age categories based on their frequency and select the top 3 among flipped cases
+top_age_categories_flipped <- names(sort(table(flipped_data$Age_Category), decreasing = TRUE))[1:3]
+
+# Create a data frame for top 3 diagnostics among flipped cases
+top_diagnostics_flipped_df <- data.frame(Category = c(top_diagnostics_flipped, top_temp_categories_flipped, top_bp_categories_flipped, top_age_categories_flipped),
+                                         Count = c(sapply(top_diagnostics_flipped, function(d) sum(flipped_data$DRG01 == d)),
+                                                   sapply(top_temp_categories_flipped, function(tc) sum(flipped_data$Temperature_Category == tc)),
+                                                   sapply(top_bp_categories_flipped, function(bp) sum(flipped_data$BP_Category == bp)),
+                                                   sapply(top_age_categories_flipped, function(age) sum(flipped_data$Age_Category == age))),
+                                         Percentage = c(sapply(top_diagnostics_flipped, function(d) sprintf("%.2f%%", sum(flipped_data$DRG01 == d) / total_flipped * 100)),
+                                                        sapply(top_temp_categories_flipped, function(tc) sprintf("%.2f%%", sum(flipped_data$Temperature_Category == tc) / total_flipped * 100)),
+                                                        sapply(top_bp_categories_flipped, function(bp) sprintf("%.2f%%", sum(flipped_data$BP_Category == bp) / total_flipped * 100)),
+                                                        sapply(top_age_categories_flipped, function(age) sprintf("%.2f%%", sum(flipped_data$Age_Category == age) / total_flipped * 100))))
+
+# Print the top categories among flipped cases
+print(top_diagnostics_flipped_df)
+
+```
+```{r}
+# Fit a Logistic Regression model
+baseline_model <- glm(Flipped ~ ., data = OUDs, family = binomial)
+
+# Make predictions using the baseline model
+baseline_predictions <- predict(baseline_model, newdata = OUDs, type = "response")
+
+# Convert predicted probabilities to binary predictions
+baseline_binary_predictions <- ifelse(baseline_predictions >= 0.5, 1, 0)
+
+# Evaluate the baseline model
+baseline_accuracy <- mean(baseline_binary_predictions == OUDs$Flipped)
+baseline_accuracy
+```
+
+
+
+Splitting the Data 
+
+```{r}
+library(caTools)
+# Set a random seed for reproducibility
+set.seed(123)
+
+split <- sample.split(OUDs$Flipped, SplitRatio = 0.7)
+
+# Create the training and testing sets
+training <- OUDs[split, ]
+testing <- OUDs[!split, ]
+
+```
+
+
+```{r}
+# Check the distribution of the target variable
+table(training$Flipped)
+# Visualize the distribution of the target variable
+barplot(table(training$Flipped), main = "Distribution of Flipped Variable", xlab = "Flipped", ylab = "Frequency", col = "skyblue")
+```
+
+Performing feature selection to identify the key variables that are most influential for our predictive model.
+
+```{r}
+# Load required packages
+library(randomForest)
+
+# Step 1: Train the Random Forest model
+# Assuming 'Flipped' is the target variable and other columns are features
+rf_model <- randomForest(Flipped ~ ., data = training, importance = TRUE)
+
+# Step 2: Get feature importance
+feature_importance <- importance(rf_model)
+
+# Print feature importance
+print(feature_importance)
+
+
+```
+Based on the values of 'MeanDecreaseAccuracy' and 'MeanDecreaseGini', the following variables are considered important for predicting the target variable 'Flipped':
+
+1. InitPatientClassAndFirstPostOUClass
+2. OU_LOS_hrs
+3. DRG01
+4. PrimaryInsuranceCategory
+5. BloodPressureDiff
+6. Age
+7. BloodPressureLower
+8. BloodPressureUpper
+9. PulseOximetry
+10.Respirations
+11.Temperature
+12.BP_Category
+13.Temperature_Category
+
+
+Logistic Regression Model Before Oversampling
+
+```{r}
+LRmod1 <- glm( Flipped~ Age+ DRG01+ Gender+ OU_LOS_hrs+BloodPressureLower , data =training, family = binomial)
+summary(LRmod1)
+```
+
+```{r}
+LRmod2 <- glm( Flipped~ Age+ Respirations+ BloodPressureLower+Gender+ BloodPressureUpper+ DRG01 +Temperature+ OU_LOS_hrs , data =training, family = binomial)
+summary(LRmod2)
+```
+```{r}
+LRmod3<- glm(Flipped~ Age+ DRG01 +PrimaryInsuranceCategory+ Gender+ OU_LOS_hrs , data =training, family = binomial)
+summary(LRmod3)
+```
+```{r}
+LRmod4 <- glm(Flipped~ DRG01 +PrimaryInsuranceCategory+ OU_LOS_hrs+ Temperature + Age , data =training, family = binomial)
+summary(LRmod4)
+```
+```{r}
+LRmod5 <- glm(Flipped~ DRG01 +PrimaryInsuranceCategory+ Temperature+ OU_LOS_hrs+ BloodPressureLower+BloodPressureDiff+BloodPressureUpper, data =training, family = binomial)
+summary(LRmod5)
+```
+```{r}
+LRmod6 <-glm(Flipped ~DRG01 + PrimaryInsuranceCategory + Temperature + OU_LOS_hrs  + BloodPressureUpper + Respirations+Gender, 
+    family = binomial, data = training)
+summary(LRmod6)
+```
+```{r}
+# Make predictions on the test dataset
+
+testing$Predicted <- predict(LRmod4, newdata = testing, type = "response")
+```
+
+
+```{r}
+# Define a probability threshold (e.g., 0.5)
+threshold <- 0.5
+
+# Classify observations based on the threshold
+testing$Predicted_Class <- ifelse(testing$Predicted >= threshold, 1, 0)
+
+# Calculate performance metrics
+confusion_matrix <- table(testing$Flipped, testing$Predicted_Class)
+print(confusion_matrix)
+```
+
+```{r}
+library(knitr)
+
+confusion_matrix <- table(testing$Flipped, testing$Predicted_Class)
+accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
+sensitivity <- confusion_matrix[2, 2] / sum(confusion_matrix[2, ])
+specificity <- confusion_matrix[1, 1] / sum(confusion_matrix[1, ])
+precision <- confusion_matrix[2, 2] / sum(confusion_matrix[, 2])
+recall <- confusion_matrix[2, 2] / sum(confusion_matrix[2, ])
+f1_score <- 2 * (precision * recall) / (precision + recall)
+
+LRMetrics1 <- data.frame(
+  Metric = c("Accuracy", "Sensitivity", "Specificity", "Precision", "Recall", "F1-Score"),
+  Value = c(accuracy, sensitivity, specificity, precision, recall, f1_score)
+)
+
+title <- "Predictions Made Using Logistic Regression"
+
+kable(LRMetrics1, caption = title)
+```
+```{r}
+library(pROC)
+roc_curve <- roc(testing$Flipped, testing$Predicted)
+```
+
+```{r}
+# Set custom colors
+plot_colors <- c("#1f77b4", "#ff7f0e")  # blue, orange
+
+# Compute the AUC
+aucLRB <- auc(roc_curve)
+
+# Plot the ROC curve
+plot(roc_curve, 
+     main = "ROC Curve Before Oversampling", 
+     print.auc = TRUE, 
+     auc.polygon = TRUE, 
+     grid = TRUE,
+     col = plot_colors[1],     # Set line color
+     lwd = 2,                  # Set line width
+     print.auc.col = plot_colors[3]  # Set AUC text color
+)
+
+# Add diagonal reference line (random classifier)
+abline(a = 0, b = 1, lty = 2, col = "white")
+
+# Add legend
+legend("topleft", 
+       legend = paste("AUC =", round(aucLRB, 2)),  # Fix variable name to aucLRB
+       col = plot_colors[1],    # Set legend text color
+       lwd = 2,                 # Set legend line width
+       bty = "n"                # Remove legend border
+)
+
+```
+
+Logistice Regression after Oversampling
+
+```{r}
+library(ROSE)
+
+# Balance the 'Flipped' variable using 'oversampling' technique
+flipoverS <- ovun.sample(Flipped ~ ., data = OUDs, method = 'over', seed = 1)$data
+
+# Let's see if the above command worked
+prop.table(table(flipoverS$Flipped))
+
+```
+
+```{r}
+#splitting dataset, train_data 80%, test_data 20%
+library(caTools)
+
+# Set a random seed for reproducibility
+set.seed(123)
+
+# Create a 60% train and 40% test split
+split <- sample.split(flipoverS$Flipped, SplitRatio = 0.8)
+
+# Create the training and test sets
+trainingFOVS <- flipoverS[split, ]
+testingFOVS <- flipoverS[!split, ]
+
+str(flipoverS)
+```
+
+
+```{r}
+# model with oversampled data set
+LRmod4_OS <- glm(Flipped~ DRG01 +PrimaryInsuranceCategory+ OU_LOS_hrs+ Temperature , data =trainingFOVS, family = binomial)
+summary(LRmod4_OS)
+```
+
+
+```{r}
+# Make predictions on the test dataset
+testingFOVS$Predicted <- predict(LRmod4_OS, newdata = testingFOVS, type = "response")
+
+# Define a probability threshold (e.g., 0.5)
+threshold <- 0.5
+
+# Classify observations based on the threshold
+testingFOVS$Predicted_Class <- ifelse(testingFOVS$Predicted >= threshold, 1, 0)
+
+# Calculate performance metrics
+confusion_matrix_ov <- table(testingFOVS$Flipped, testingFOVS$Predicted_Class)
+print(confusion_matrix_ov)
+```
+
+
+```{r}
+confusion_matrix_ov <- table(testingFOVS$Flipped, testingFOVS$Predicted_Class)
+accuracy <- sum(diag(confusion_matrix_ov)) / sum(confusion_matrix_ov)
+sensitivity <- confusion_matrix_ov[2, 2] / sum(confusion_matrix_ov[2, ])
+specificity <- confusion_matrix_ov[1, 1] / sum(confusion_matrix_ov[1, ])
+precision <- confusion_matrix_ov[2, 2] / sum(confusion_matrix_ov[, 2])
+recall <- confusion_matrix_ov[2, 2] / sum(confusion_matrix_ov[2, ])
+f1_score <- 2 * (precision * recall) / (precision + recall)
+
+LRMetrics2 <- data.frame(
+  Metric = c("Accuracy", "Sensitivity", "Specificity", "Precision", "Recall", "F1-Score"),
+  Value = c(accuracy, sensitivity, specificity, precision, recall, f1_score)
+)
+
+title <- "Predictions Made Using Logistic Regression Oversampling"
+
+kable(LRMetrics2, caption = title)
+```
+
+```{r}
+# install.packages("pROC")
+library(pROC)
+
+# calculate the ROC curve
+LRroc_curve_OS <- roc(testingFOVS$Flipped, testingFOVS$Predicted)
+```
+
+```{r}
+# Set custom colors
+plot_colors <- c("#1f77b4", "#ff7f0e")  # blue, orange
+
+# Compute the AUC
+aucLR <- auc(LRroc_curve_OS)
+
+# Plot the ROC curve
+plot(LRroc_curve_OS, 
+     main = "ROC Curve After Oversampling", 
+     print.auc = TRUE, 
+     auc.polygon = TRUE, 
+     grid = TRUE,
+     col = plot_colors[1],    
+     lwd = 2,                  
+     print.auc.col = plot_colors[2]  # Changed to index 2 for color
+)
+
+# Add diagonal reference line 
+abline(a = 0, b = 1, lty = 2, col = "white")
+
+# Add legend
+legend("topleft", 
+       legend = paste("AUC =", round(aucLR, 2)),  # Changed to aucLR
+       col = plot_colors[1],    # Set legend text color
+       lwd = 2,                 # Set legend line width
+       bty = "n"                # Remove legend border
+)
+
+```
+
+Random Forest Model before Oversampling
+
+```{r}
+library(caret)
+rf <- randomForest(as.factor(Flipped) ~ OU_LOS_hrs + DRG01 + Temperature +  PrimaryInsuranceCategory + Age, data = training, ntree = 200,
+mtry = 4, nodesize = 5, importance = TRUE)
+testing$rf.pred <- predict(rf, testing, type="response")
+
+confusionMatrix(testing$rf.pred, factor(testing$Flipped))
+```
+
+
+```{r}
+library(pROC)
+
+RFpred_num <- as.numeric(testing$rf.pred)
+
+
+RFroc_obj <- roc(testing$Flipped, RFpred_num)
+```
+
+```{r}
+auc <- auc(RFroc_obj)
+
+# Plot the ROC curve
+plot(RFroc_obj, main = "ROC Curve Random Forest Before Oversampling", col = "blue",print.auc = TRUE, auc.polygon = TRUE, grid = TRUE)
+# Plot the ROC curve
+
+
+# Add diagonal reference line (random classifier)
+abline(a = 0, b = 1, lty =2 , col = "gray")
+
+# Add legend
+legend("topleft", legend = paste("AUC =", round(auc, 2)), col = "blue", lwd = 2)
+```
+```{r}
+library(caret)
+set.seed(123)  
+ctrl <- trainControl(method = "cv", number = 10)
+cv_results <- train(as.factor(Flipped) ~  OU_LOS_hrs + DRG01 + Temperature +  PrimaryInsuranceCategory, data = training, method = "rf", trControl = ctrl)
+cv_results
+```
+
+```{r}
+# Creating training and test datasets after balancing(oversampling) the dataset for 'Flipped' variable
+set.seed(1)
+FlipdOS <- sample(2, nrow(flipoverS), replace = TRUE, prob = c(0.7, 0.3))
+trainingFOVS <- flipoverS[FlipdOS == 1,]
+testingFOVS <- flipoverS[FlipdOS == 2,]
+```
+
+Random Forest after oversampling
+
+```{r}
+library(randomForest)
+## random forest with oversampling
+RFOS <- randomForest(Flipped ~ OU_LOS_hrs + DRG01 + Temperature_Category + BP_Category + Pulse + PulseOximetry + Temperature + BloodPressureDiff + PrimaryInsuranceCategory + Age , data = trainingFOVS, ntree = 200,
+mtry = 4, nodesize = 5, importance = TRUE)
+
+```
+
+```{r}
+# confusion matrrix after oversampling
+library(caret)  
+testingFOVS$rf.pred <- predict(RFOS, testingFOVS, type="response")
+confusionMatrix(testingFOVS$rf.pred, factor(testingFOVS$Flipped))
+```
+
+```{r}
+library(pROC)
+
+RFpred_num <- as.numeric(testing$rf.pred)
+
+RFroc_obj <- roc(testing$Flipped, RFpred_num)
+```
+
+```{r}
+# Calculate AUC
+aucRFB <- auc(RFroc_obj)
+
+# Plot the ROC curve
+plot(RFroc_obj, 
+     main = "ROC Curve Random Forest Before Oversampling",
+     col = "blue",
+     print.auc = TRUE,
+     auc.polygon = TRUE,
+     grid = TRUE)
+
+# Add diagonal reference line (random classifier)
+abline(a = 0, b = 1, lty = 2, col = "white")
+
+# Add legend
+legend("topleft", 
+       legend = paste("AUC =", round(auc, 2)), 
+       col = "blue", 
+       lwd = 2)
+
+```
+```{r}
+library(caret)
+set.seed(123)  
+ctrl <- trainControl(method = "cv", number = 10)
+cv_results <- train(Flipped ~  OU_LOS_hrs + DRG01 + Temperature_Category + BP_Category + Pulse + PulseOximetry + Temperature + BloodPressureDiff + PrimaryInsuranceCategory + Age , data = training, method = "rf", trControl = ctrl)
+cv_results
+```
+
+
+Random Forest after oversampling
+
+```{r}
+library(randomForest)
+## random forest with oversampling
+RFovS <- randomForest(Flipped ~ OU_LOS_hrs + DRG01 + Temperature_Category + BP_Category + Pulse + PulseOximetry + Temperature + BloodPressureDiff + PrimaryInsuranceCategory + Age  , data = trainingFOVS, ntree = 200,
+mtry = 4, nodesize = 5, importance = TRUE)
+
+```
+
+```{r}
+# confusion matrrix after oversampling
+library(caret)  
+testingFOVS$rf.pred <- predict(RFovS, testingFOVS, type="response")
+confusionMatrix(testingFOVS$rf.pred, factor(testingFOVS$Flipped))
+```
+
+```{r}
+library(pROC)
+
+RFpred_num1 <- as.numeric(testingFOVS$rf.pred)
+RFroc_obj1 <- roc(testingFOVS$Flipped, RFpred_num1)
+```
+
+```{r}
+aucRF <- auc(RFroc_obj1)
+
+# Plot the ROC curve
+plot(RFroc_obj1, main = "ROC Curve Random Forest After Oversampling", col = "blue",print.auc = TRUE, auc.polygon = TRUE, grid = TRUE)
+# Plot the ROC curve
+
+
+# Add diagonal reference line (random classifier)
+abline(a = 0, b = 1, lty =2 , col = "gray")
+
+# Add legend
+legend("topleft", legend = paste("AUC =", round(auc, 2)), col = "blue", lwd = 2)
+```
+
+```{r}
+library(caret)
+set.seed(123)  
+ctrl <- trainControl(method = "cv", number = 10)
+cv_results <- train(Flipped ~  OU_LOS_hrs + DRG01 + Temperature_Category + BP_Category + Pulse + PulseOximetry + Temperature + BloodPressureDiff + PrimaryInsuranceCategory + Age , data = trainingFOVS, method = "rf", trControl = ctrl)
+cv_results
+```
+
+Decision Tree before Oversampling
+
+```{r}
+library(rpart)
+# Train the Decision Tree model
+DT <- rpart(Flipped ~ OU_LOS_hrs + DRG01 + Temperature_Category + BP_Category + Pulse + PulseOximetry + Temperature + BloodPressureDiff + PrimaryInsuranceCategory + Age, 
+            data = training, 
+            method = "class")
+# Load required library
+library(rpart.plot)
+
+# Plot the decision tree
+rpart.plot(DT, main = "Decision Tree Plot")
+
+# Make predictions on the testing set
+testing$dt.pred <- predict(DT, testing, type = "class")
+
+# Generate confusion matrix
+confusionMatrix(testing$dt.pred, factor(testing$Flipped))
+
+
+
+```
+
+```{r}
+# Load pROC library
+library(pROC)
+
+# Convert predicted values to numeric
+DTpred_num <- as.numeric(testing$dt.pred)
+
+# Create ROC curve object
+DTroc_obj <- roc(testing$Flipped, DTpred_num)
+```
+```{r}
+# Calculate AUC
+aucDTB <- auc(DTroc_obj)
+
+# Plot the ROC curve
+plot(DTroc_obj, 
+     main = "ROC Curve Decision Tree Before Oversampling", 
+     col = "blue",
+     print.auc = TRUE, 
+     auc.polygon = TRUE, 
+     grid = TRUE)
+
+# Add diagonal reference line
+abline(a = 0, b = 1, lty = 2, col = "white")
+
+# Add legend
+legend("topleft", 
+       legend = paste("AUC =", round(auc, 2)), 
+       col = "blue", 
+       lwd = 2)
+
+```
+```{r}
+# Load caret library
+library(caret)
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Define the training control
+ctrl <- trainControl(method = "cv", number = 10)
+
+# Train the model using cross-validation
+cv_results <- train(Flipped ~ OU_LOS_hrs + DRG01 + Temperature_Category + BP_Category + Pulse + PulseOximetry + Temperature + BloodPressureDiff + PrimaryInsuranceCategory + Age , 
+                    data = training, 
+                    method = "rpart", 
+                    trControl = ctrl)
+
+# View the cross-validation results
+cv_results
+
+```
+
+Decision Tree after Oversampling
+
+```{r}
+library(rpart)
+# Train the Decision Tree model
+DTOS <- rpart(Flipped ~ OU_LOS_hrs + DRG01 + Temperature_Category + BP_Category + Pulse + PulseOximetry + Temperature + BloodPressureDiff + PrimaryInsuranceCategory + Age , 
+            data = trainingFOVS, 
+            method = "class")
+
+# Make predictions on the testing set
+testingFOVS$dt.pred <- predict(DT, testingFOVS, type = "class")
+
+# Generate confusion matrix
+confusionMatrix(testingFOVS$dt.pred, factor(testingFOVS$Flipped))
+
+```
+
+```{r}
+# Load pROC library
+library(pROC)
+
+# Convert predicted values to numeric
+DTpred_num <- as.numeric(testingFOVS$dt.pred)
+
+# Create ROC curve object
+DTroc_obj <- roc(testingFOVS$Flipped, DTpred_num)
+```
+```{r}
+# Calculate AUC
+aucDT <- auc(DTroc_obj)
+
+# Plot the ROC curve
+plot(DTroc_obj, 
+     main = "ROC Curve Decision Tree After Oversampling", 
+     col = "blue",
+     print.auc = TRUE, 
+     auc.polygon = TRUE, 
+     grid = TRUE)
+
+# Add diagonal reference line
+abline(a = 0, b = 1, lty = 2, col = "white")
+
+# Add legend
+legend("topleft", 
+       legend = paste("AUC =", round(auc, 2)), 
+       col = "blue", 
+       lwd = 2)
+
+```
+
+```{r}
+# Load caret library
+library(caret)
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Define the training control
+ctrl <- trainControl(method = "cv", number = 10)
+
+# Train the model using cross-validation
+cv_results <- train(Flipped ~ OU_LOS_hrs + DRG01 + Temperature + PrimaryInsuranceCategory + Age, 
+                    data = training, 
+                    method = "rpart", 
+                    trControl = ctrl)
+
+# View the cross-validation results
+cv_results
+
+```
+
+```{r}
+# Make predictions on the testing set (generate predicted probabilities)
+testingFOVS$dt.pred_prob <- predict(DTOS, testingFOVS, type = "prob")[, "1"]
+testingFOVS$rf.pred_prob <- predict(RFovS, testingFOVS, type="prob")[, "1"]
+testingFOVS$lr.pred_prob <- predict(LRmod4_OS, testingFOVS, type = "response")
+
+# Assuming you have prediction probabilities for each model: pred_prob_LR, pred_prob_RF, pred_prob_DT
+# And true labels: true_labels
+
+# Load the pROC library
+library(pROC)
+
+# Calculate ROC curve data for each model
+library(pROC)
+
+# Calculate ROC curve data for logistic regression model
+roc_data_LR <- roc(testingFOVS$Flipped, testingFOVS$lr.pred_prob)
+roc_data_RF <- roc(testingFOVS$Flipped, testingFOVS$rf.pred_prob)
+roc_data_DT <- roc(testingFOVS$Flipped, testingFOVS$dt.pred_prob)
+
+
+# Plot ROC curves for all three models
+plot(roc_data_LR, col = "blue", main = "ROC Curves", legacy.axes = TRUE)
+plot(roc_data_RF, col = "green", add = TRUE)
+plot(roc_data_DT, col = "red", add = TRUE)
+legend("bottomright", legend=c("Logistic Regression", "Random Forest", "Decision Tree"), col=c("blue", "green", "red"), lty=1)
+
+
+```
+
+
+```{r}
+
+# Logistic Regression
+testingFOVS$lr.pred <- predict(LRmod4_OS, newdata = testingFOVS, type = "response")
+
+# Create data frame for logistic regression predictions
+prediction_df_lr <- data.frame(Actual = testingFOVS$Flipped, Predicted = testingFOVS$lr.pred)
+
+# Calculate differences between actual and predicted values for logistic regression
+differences_lr <- prediction_df_lr$Actual - prediction_df_lr$Predicted
+
+# Calculate RMSE for logistic regression
+rmse_lr <- sqrt(mean(differences_lr^2))
+
+```
+
+```{r}
+# Random Forest
+testingFOVS$rf.pred <- predict(RFovS, testingFOVS, type = "response")
+
+# Create data frame for random forest predictions
+prediction_df_rf <- data.frame(Actual = testingFOVS$Flipped, Predicted = testingFOVS$rf.pred)
+
+# Calculate differences between actual and predicted values for random forest
+differences_rf <- prediction_df_rf$Actual - prediction_df_rf$Predicted
+
+# Calculate RMSE for random forest
+rmse_rf <- sqrt(mean(differences_rf^2))
+
+```
+
+```{r}
+# Decision Tree
+testingFOVS$dt.pred <- predict(DTOS, testingFOVS, type = "class")
+
+# Create data frame for decision tree predictions
+prediction_df_dt <- data.frame(Actual = testingFOVS$Flipped, Predicted = testingFOVS$dt.pred)
+
+# Calculate differences between actual and predicted values for decision tree
+differences_dt <- prediction_df_dt$Actual - prediction_df_dt$Predicted
+
+# Calculate RMSE for decision tree
+rmse_dt <- sqrt(mean(differences_dt^2))
+```
+
+
+```{r}
+print(paste("RMSE for Logistic Regression:", rmse_lr))
+print(paste("RMSE for Random Forest:", rmse_rf))
+print(paste("RMSE for Decision Tree:", rmse_dt))
+
+```
+
+```{r}
+# Convert factors to numeric in the prediction data frames
+prediction_df_lr$Actual <- as.numeric(as.character(prediction_df_lr$Actual))
+prediction_df_lr$Predicted <- as.numeric(as.character(prediction_df_lr$Predicted))
+
+prediction_df_rf$Actual <- as.numeric(as.character(prediction_df_rf$Actual))
+prediction_df_rf$Predicted <- as.numeric(as.character(prediction_df_rf$Predicted))
+
+prediction_df_dt$Actual <- as.numeric(as.character(prediction_df_dt$Actual))
+prediction_df_dt$Predicted <- as.numeric(as.character(prediction_df_dt$Predicted))
+
+# Recalculate differences
+differences_lr <- prediction_df_lr$Actual - prediction_df_lr$Predicted
+differences_rf <- prediction_df_rf$Actual - prediction_df_rf$Predicted
+differences_dt <- prediction_df_dt$Actual - prediction_df_dt$Predicted
+
+# Find NA values in the recalculated differences
+print("NA values in differences for Logistic Regression:")
+print(sum(is.na(differences_lr)))
+print("NA values in differences for Random Forest:")
+print(sum(is.na(differences_rf)))
+print("NA values in differences for Decision Tree:")
+print(sum(is.na(differences_dt)))
+
+```
+```{r}
+# Calculate RMSE for Logistic Regression
+rmse_lr <- sqrt(mean((as.numeric(prediction_df_lr$Actual) - as.numeric(prediction_df_lr$Predicted))^2, na.rm = TRUE))
+
+# Calculate MAE for Logistic Regression
+mae_lr <- mean(abs(as.numeric(prediction_df_lr$Actual) - as.numeric(prediction_df_lr$Predicted)), na.rm = TRUE)
+
+# Calculate RMSE for Random Forest
+rmse_rf <- sqrt(mean((as.numeric(prediction_df_rf$Actual) - as.numeric(prediction_df_rf$Predicted))^2, na.rm = TRUE))
+
+# Calculate MAE for Random Forest
+mae_rf <- mean(abs(as.numeric(prediction_df_rf$Actual) - as.numeric(prediction_df_rf$Predicted)), na.rm = TRUE)
+
+# Calculate RMSE for Decision Tree
+rmse_dt <- sqrt(mean((as.numeric(prediction_df_dt$Actual) - as.numeric(prediction_df_dt$Predicted))^2, na.rm = TRUE))
+
+# Calculate MAE for Decision Tree
+mae_dt <- mean(abs(as.numeric(prediction_df_dt$Actual) - as.numeric(prediction_df_dt$Predicted)), na.rm = TRUE)
+
+# Print RMSE and MAE for each model
+print("Logistic Regression:")
+print(paste("RMSE:", round(rmse_lr, 2)))
+print(paste("MAE:", round(mae_lr, 2)))
+
+print("Random Forest:")
+print(paste("RMSE:", round(rmse_rf, 2)))
+print(paste("MAE:", round(mae_rf, 2)))
+
+print("Decision Tree:")
+print(paste("RMSE:", round(rmse_dt, 2)))
+print(paste("MAE:", round(mae_dt, 2)))
+
+```
+
+
+Model Performance
+
+```{r}
+# Create data frames for RMSE and MAE
+metrics <- c("RMSE", "MAE")
+lr_values <- c(rmse_lr, mae_lr)
+rf_values <- c(rmse_rf, mae_rf)
+dt_values <- c(rmse_dt, mae_dt)
+
+# Combine values into a data frame
+model_metrics <- data.frame(Model = c("Logistic Regression", "Random Forest", "Decision Tree"),
+                             RMSE = c(rmse_lr, rmse_rf, rmse_dt),
+                             MAE = c(mae_lr, mae_rf, mae_dt))
+
+# Melt the data frame for plotting
+library(reshape2)
+model_metrics_melted <- melt(model_metrics, id.vars = "Model")
+
+# Plot the bar plot
+library(ggplot2)
+ggplot(model_metrics_melted, aes(x = Model, y = value, fill = variable)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Model Performance",
+       y = "Value", fill = "Metric") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+Feature Importance
+
+```{r}
+# Extract coefficients from the logistic regression model
+coefficients <- coef(LRmod4_OS)[-1]  # Exclude intercept
+feature_names <- names(coefficients)
+
+# Plot feature importance
+barplot(abs(coefficients), names.arg = feature_names, main = "Logistic Regression Coefficients", 
+        xlab = "Feature", ylab = "Absolute Coefficient Value", las = 2, col = "skyblue")
+
+# Load the required library
+library(randomForest)
+
+# Assuming you have already trained your Random Forest model (RFovS)
+
+# Plot feature importance
+varImpPlot(RFovS, main = "Random Forest Feature Importance")
+
+
+# Extract feature importance from the decision tree model
+importance <- DTOS$variable.importance
+
+# Plot feature importance
+barplot(importance, main = "Decision Tree Feature Importance", 
+        xlab = "Feature", ylab = "Importance", col = "lightgreen")
+
+
+```
+
+Baseline Accuracy
+
+```{r}
+# Calculate the baseline accuracy for logistic regression
+baseline_accuracy <- max(prop.table(table(OUDs$Flipped)))
+
+# Print the baseline accuracies
+print(paste("Baseline Accuracy for the Model is:", baseline_accuracy))
+```
+
+
+```{r}
+# Filter only flipped patients and numeric columns
+flipped_df <- testingFOVS %>% 
+  filter(Flipped == 1) %>%
+  select(Age, OU_LOS_hrs, Pulse, Temperature, BloodPressureLower,
+         BloodPressureUpper, BloodPressureDiff, PulseOximetry, Respirations)
+
+# Remove rows with missing values
+flipped_df_cleaned <- na.omit(flipped_df)
+
+# Check for missing values again
+remaining_na <- sum(is.na(flipped_df_cleaned))
+cat("Remaining NA values after cleaning:", remaining_na, "\n")
+
+# Define subsets of features for modeling
+feature_subsets <- list(
+  subset1 = c('Age', 'OU_LOS_hrs', 'Pulse', 'Temperature'),
+  subset2 = c('BloodPressureLower', 'BloodPressureUpper', 'BloodPressureDiff', 'PulseOximetry'),
+  subset3 = c('Respirations')
+)
+
+```
+
+
+
